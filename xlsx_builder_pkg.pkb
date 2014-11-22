@@ -129,11 +129,6 @@ IS
     , defined_names tp_defined_names
     );
 
-  /* Constants */
-
-  c_local_file_header        CONSTANT RAW(4) := hextoraw( '504B0304' ); -- Local file header signature
-  c_end_of_central_directory CONSTANT RAW(4) := hextoraw( '504B0506' ); -- End of central directory signature  
-
   /* Globals */
   workbook tp_book;
 --
@@ -145,6 +140,52 @@ IS
   END get_workbook;
   
   /* Private API */
+
+  /**
+  * Procedure concatinates a VARCHAR2 to an CLOB.
+  * It uses another VARCHAR2 as a buffer until it reaches 32767 characters.
+  * Then it flushes the current buffer to the CLOB and resets the buffer using
+  * the actual VARCHAR2 to add.
+  * Your final call needs to be done setting p_eof to TRUE in order to
+  * flush everything to the CLOB.
+  *
+  * @param p_clob        The CLOB buffer.
+  * @param p_vc_buffer   The intermediate VARCHAR2 buffer. (must be VARCHAR2(32767))
+  * @param p_vc_addition The VARCHAR2 value you want to append.
+  * @param p_eof         Indicates if complete buffer should be flushed to CLOB.
+  */
+  PROCEDURE clob_vc_concat( p_clob IN OUT NOCOPY CLOB
+                          , p_vc_buffer IN OUT NOCOPY VARCHAR2
+                          , p_vc_addition IN VARCHAR2
+                          , p_eof IN BOOLEAN DEFAULT FALSE
+                          )
+  AS
+    l_vc_buffer_flushed BOOLEAN := FALSE;
+  BEGIN
+    -- Init
+    IF p_clob IS NULL THEN
+      dbms_lob.createtemporary(p_clob, TRUE);
+    END IF;
+    
+    -- Standard Flow
+    IF NVL(LENGTHB(p_vc_buffer), 0) + NVL(LENGTHB(p_vc_addition), 0) < 32767 THEN
+      p_vc_buffer := p_vc_buffer || p_vc_addition;
+    ELSE
+        dbms_lob.writeappend(p_clob, length(p_vc_buffer), p_vc_buffer);
+        p_vc_buffer := p_vc_addition;
+        l_vc_buffer_flushed := TRUE;
+    END IF;
+    
+    -- Full Flush requested
+    IF p_eof THEN
+      IF l_vc_buffer_flushed THEN
+        dbms_lob.writeappend(p_clob, length(p_vc_addition), p_vc_addition);
+      ELSE
+        dbms_lob.writeappend(p_clob, length(p_vc_buffer), p_vc_buffer);
+      END IF;
+      p_vc_buffer := NULL;
+    END IF;
+  END clob_vc_concat;
 
   FUNCTION alfan_col( p_col PLS_INTEGER )
     RETURN VARCHAR2
@@ -870,8 +911,9 @@ IS
     t_col_ind PLS_INTEGER;
     t_len PLS_INTEGER;
   BEGIN
-    dbms_lob.createtemporary( t_excel, true );
-    t_xxx := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    dbms_lob.createtemporary( t_excel, TRUE );
+    
+    t_tmp := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
@@ -880,37 +922,38 @@ IS
 
     FOR s IN 1 .. workbook.sheets.count()
     LOOP
-      t_xxx := t_xxx || '<Override PartName="/xl/worksheets/sheet' || s || '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+      clob_vc_concat(t_xxx, t_tmp, '<Override PartName="/xl/worksheets/sheet' || s || '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>');
     END LOOP;
-
-    t_xxx := t_xxx || '
+      clob_vc_concat(t_xxx, t_tmp, '
 <Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
 <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
 <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
-<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>';
+<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>');
 
     FOR s IN 1 .. workbook.sheets.count()
     LOOP
       IF workbook.sheets( s ).comments.count() > 0
       THEN
-        t_xxx := t_xxx || '<Override PartName="/xl/comments' || s || '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml"/>';
+        clob_vc_concat(t_xxx, t_tmp, '<Override PartName="/xl/comments' || s || '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml"/>');
       END IF;
     END LOOP;
 
-    t_xxx := t_xxx || '</Types>';
+    clob_vc_concat(t_xxx, t_tmp, '</Types>', TRUE);
     zip_util_pkg.add_file( t_excel, '[Content_Types].xml', t_xxx );
+    t_xxx := NULL;
 
-    t_xxx := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    clob_vc_concat(t_xxx, t_tmp, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 <dc:creator>' || sys_context( 'userenv', 'os_user' ) || '</dc:creator>
 <cp:lastModifiedBy>' || sys_context( 'userenv', 'os_user' ) || '</cp:lastModifiedBy>
 <dcterms:created xsi:type="dcterms:W3CDTF">' || to_char( current_timestamp, 'yyyy-mm-dd"T"hh24:mi:ssTZH:TZM' ) || '</dcterms:created>
 <dcterms:modified xsi:type="dcterms:W3CDTF">' || to_char( current_timestamp, 'yyyy-mm-dd"T"hh24:mi:ssTZH:TZM' ) || '</dcterms:modified>
-</cp:coreProperties>';
+</cp:coreProperties>', TRUE);
     zip_util_pkg.add_file( t_excel, 'docProps/core.xml', t_xxx );
+    t_xxx := NULL;
     
-    t_xxx := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    clob_vc_concat(t_xxx, t_tmp, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
 <Application>Microsoft Excel</Application>
 <DocSecurity>0</DocSecurity>
@@ -926,21 +969,22 @@ IS
 </vt:vector>
 </HeadingPairs>
 <TitlesOfParts>
-<vt:vector size="' || workbook.sheets.count() || '" baseType="lpstr">';
+<vt:vector size="' || workbook.sheets.count() || '" baseType="lpstr">');
 
     FOR s IN 1 .. workbook.sheets.count()
     LOOP
-      t_xxx := t_xxx || '<vt:lpstr>' || workbook.sheets( s ).NAME || '</vt:lpstr>';
+      clob_vc_concat(t_xxx, t_tmp, '<vt:lpstr>' || workbook.sheets( s ).NAME || '</vt:lpstr>');
     END LOOP;
     
-    t_xxx := t_xxx || '</vt:vector>
+    clob_vc_concat(t_xxx, t_tmp, '</vt:vector>
 </TitlesOfParts>
 <LinksUpToDate>FALSE</LinksUpToDate>
 <SharedDoc>FALSE</SharedDoc>
 <HyperlinksChanged>FALSE</HyperlinksChanged>
 <AppVersion>14.0300</AppVersion>
-</Properties>';
+</Properties>', TRUE);
     zip_util_pkg.add_file( t_excel, 'docProps/app.xml', t_xxx );
+    t_xxx := NULL;
 
     t_xxx := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -949,22 +993,23 @@ IS
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
 </Relationships>';
     zip_util_pkg.add_file( t_excel, '_rels/.rels', t_xxx );
+    t_xxx := NULL;
 
-    t_xxx := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="x14ac" xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac">';
+    clob_vc_concat(t_xxx, t_tmp, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="x14ac" xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac">');
     IF workbook.numFmts.count() > 0
     THEN
-      t_xxx := t_xxx || '<numFmts count="' || workbook.numFmts.count() || '">';
+      clob_vc_concat(t_xxx, t_tmp, '<numFmts count="' || workbook.numFmts.count() || '">');
       FOR n IN 1 .. workbook.numFmts.count()
       LOOP
-        t_xxx := t_xxx || '<numFmt numFmtId="' || workbook.numFmts( n ).numFmtId || '" formatCode="' || workbook.numFmts( n ).formatCode || '"/>';
+        clob_vc_concat(t_xxx, t_tmp, '<numFmt numFmtId="' || workbook.numFmts( n ).numFmtId || '" formatCode="' || workbook.numFmts( n ).formatCode || '"/>');
       END LOOP;
-      t_xxx := t_xxx || '</numFmts>';
+      clob_vc_concat(t_xxx, t_tmp, '</numFmts>');
     END IF;
-    t_xxx := t_xxx || '<fonts count="' || workbook.fonts.count() || '" x14ac:knownFonts="1">';
+    clob_vc_concat(t_xxx, t_tmp, '<fonts count="' || workbook.fonts.count() || '" x14ac:knownFonts="1">');
     FOR f IN 0 .. workbook.fonts.count() - 1
     LOOP
-      t_xxx := t_xxx || '<font>' || 
+      clob_vc_concat(t_xxx, t_tmp, '<font>' || 
                CASE WHEN workbook.fonts( f ).bold THEN '<b/>' END ||
                CASE WHEN workbook.fonts( f ).italic THEN '<i/>' END ||
                CASE WHEN workbook.fonts( f ).underline THEN '<u/>' END ||
@@ -973,52 +1018,52 @@ IS
                <name val="' || workbook.fonts( f ).NAME || '"/>
                <family val="' || workbook.fonts( f ).family || '"/>
                <scheme val="none"/>
-               </font>';
+               </font>');
     END LOOP;
-    t_xxx := t_xxx || '</fonts>
-<fills count="' || workbook.fills.count() || '">';
+    clob_vc_concat(t_xxx, t_tmp, '</fonts>
+<fills count="' || workbook.fills.count() || '">');
     for f in 0 .. workbook.fills.count() - 1
     loop
-      t_xxx := t_xxx || '<fill><patternFill patternType="' || workbook.fills( f ).patternType || '">' ||
-         case when workbook.fills( f ).fgRGB is not NULL then '<fgColor rgb="' || workbook.fills( f ).fgRGB || '"/>' end ||
-         '</patternFill></fill>';
+      clob_vc_concat(t_xxx, t_tmp, '<fill><patternFill patternType="' || workbook.fills( f ).patternType || '">' ||
+         CASE WHEN workbook.fills( f ).fgRGB IS NOT NULL THEN '<fgColor rgb="' || workbook.fills( f ).fgRGB || '"/>' END ||
+         '</patternFill></fill>');
     END LOOP;
-    t_xxx := t_xxx || '</fills>
-<borders count="' || workbook.borders.count() || '">';
+    clob_vc_concat(t_xxx, t_tmp, '</fills>
+<borders count="' || workbook.borders.count() || '">');
     FOR b IN 0 .. workbook.borders.count() - 1
     LOOP
-      t_xxx := t_xxx || '<border>' ||
+      clob_vc_concat(t_xxx, t_tmp, '<border>' ||
                CASE WHEN workbook.borders( b ).LEFT   IS NULL THEN '<left/>'   ELSE '<left style="'   || workbook.borders( b ).LEFT   || '"/>' END ||
                CASE WHEN workbook.borders( b ).RIGHT  IS NULL THEN '<right/>'  ELSE '<right style="'  || workbook.borders( b ).RIGHT  || '"/>' END ||
                CASE WHEN workbook.borders( b ).top    IS NULL THEN '<top/>'    ELSE '<top style="'    || workbook.borders( b ).top    || '"/>' END ||
                CASE WHEN workbook.borders( b ).bottom IS NULL THEN '<bottom/>' ELSE '<bottom style="' || workbook.borders( b ).bottom || '"/>' END ||
-               '</border>';
+               '</border>');
     END LOOP;
-    t_xxx := t_xxx || '</borders>
+    clob_vc_concat(t_xxx, t_tmp, '</borders>
 <cellStyleXfs count="1">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
 </cellStyleXfs>
 <cellXfs count="' || ( workbook.cellXfs.count() + 1 ) || '">
-<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>';
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>');
     FOR x IN 1 .. workbook.cellXfs.count()
     LOOP
-      t_xxx := t_xxx || '<xf numFmtId="' || workbook.cellXfs( x ).numFmtId ||
+      clob_vc_concat(t_xxx, t_tmp, '<xf numFmtId="' || workbook.cellXfs( x ).numFmtId ||
                '" fontId="' || workbook.cellXfs( x ).fontId || 
                '" fillId="' || workbook.cellXfs( x ).fillId || 
-               '" borderId="' || workbook.cellXfs( x ).borderId || '">';
+               '" borderId="' || workbook.cellXfs( x ).borderId || '">');
       IF (  workbook.cellXfs( x ).alignment.horizontal IS NOT NULL
          OR workbook.cellXfs( x ).alignment.vertical IS NOT NULL
          OR workbook.cellXfs( x ).alignment.wrapText
          )
       THEN
-        t_xxx := t_xxx || '<alignment' ||
+        clob_vc_concat(t_xxx, t_tmp, '<alignment' ||
                  CASE WHEN workbook.cellXfs( x ).alignment.horizontal IS NOT NULL THEN ' horizontal="' || workbook.cellXfs( x ).alignment.horizontal || '"' END ||
                  CASE WHEN workbook.cellXfs( x ).alignment.vertical IS NOT NULL THEN ' vertical="' || workbook.cellXfs( x ).alignment.vertical || '"' END ||
-                 CASE WHEN workbook.cellXfs( x ).alignment.wrapText THEN ' wrapText="true"' END || '/>';
+                 CASE WHEN workbook.cellXfs( x ).alignment.wrapText THEN ' wrapText="true"' END || '/>');
       END IF;
-      t_xxx := t_xxx || '</xf>';
+      clob_vc_concat(t_xxx, t_tmp, '</xf>');
     END LOOP;
-    t_xxx := t_xxx || '</cellXfs>
+    clob_vc_concat(t_xxx, t_tmp, '</cellXfs>
 <cellStyles count="1">
 <cellStyle name="Normal" xfId="0" builtinId="0"/>
 </cellStyles>
@@ -1029,35 +1074,37 @@ IS
 <x14:slicerStyles defaultSlicerStyle="SlicerStyleLight1"/>
 </ext>
 </extLst>
-</styleSheet>';
+</styleSheet>', TRUE);
     zip_util_pkg.add_file( t_excel, 'xl/styles.xml', t_xxx );
+    t_xxx := NULL;
 
-    t_xxx := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    clob_vc_concat(t_xxx, t_tmp, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <fileVersion appName="xl" lastEdited="5" lowestEdited="5" rupBuild="9302"/>
 <workbookPr date1904="FALSE" defaultThemeVersion="124226"/>
 <bookViews>
 <workbookView xWindow="120" yWindow="45" windowWidth="19155" windowHeight="4935"/>
 </bookViews>
-<sheets>';
+<sheets>');
     FOR s IN 1 .. workbook.sheets.count()
     LOOP
-      t_xxx := t_xxx || '<sheet name="' || workbook.sheets( s ).name || '" sheetId="' || s || '" r:id="rId' || ( 9 + s ) || '"/>';
+      clob_vc_concat(t_xxx, t_tmp, '<sheet name="' || workbook.sheets( s ).name || '" sheetId="' || s || '" r:id="rId' || ( 9 + s ) || '"/>');
     END LOOP;
-    t_xxx := t_xxx || '</sheets>';
+    clob_vc_concat(t_xxx, t_tmp, '</sheets>');
     IF workbook.defined_names.count() > 0
     THEN
-      t_xxx := t_xxx || '<definedNames>';
+      clob_vc_concat(t_xxx, t_tmp, '<definedNames>');
       FOR s IN 1 .. workbook.defined_names.count()
       LOOP
-        t_xxx := t_xxx || '<definedName name="' || workbook.defined_names( s ).NAME || '"' ||
+        clob_vc_concat(t_xxx, t_tmp, '<definedName name="' || workbook.defined_names( s ).NAME || '"' ||
                  CASE WHEN workbook.defined_names( s ).sheet IS NOT NULL THEN ' localSheetId="' || to_char( workbook.defined_names( s ).sheet ) || '"' END ||
-                 '>' || workbook.defined_names( s ).ref || '</definedName>';
+                 '>' || workbook.defined_names( s ).ref || '</definedName>');
       END LOOP;
-      t_xxx := t_xxx || '</definedNames>';
+      clob_vc_concat(t_xxx, t_tmp, '</definedNames>');
     END IF;
-    t_xxx := t_xxx || '<calcPr calcId="144525"/></workbook>';
+    clob_vc_concat(t_xxx, t_tmp, '<calcPr calcId="144525"/></workbook>', TRUE);
     zip_util_pkg.add_file( t_excel, 'xl/workbook.xml', t_xxx );
+    t_xxx := NULL;
     
     t_xxx := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme">
@@ -1343,6 +1390,7 @@ IS
 <a:extraClrSchemeLst/>
 </a:theme>';
     zip_util_pkg.add_file( t_excel, 'xl/theme/theme1.xml', t_xxx );
+    t_xxx := NULL;
 
     FOR s IN 1 .. workbook.sheets.count()
     LOOP
@@ -1355,15 +1403,14 @@ IS
         t_col_max := greatest( t_col_max, workbook.sheets( s ).rows( t_row_ind ).last() );
         t_row_ind := workbook.sheets( s ).rows.next( t_row_ind );
       END LOOP;
-      t_xxx := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+      clob_vc_concat(t_xxx, t_tmp, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="x14ac" xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac">
 <dimension ref="' || alfan_col( t_col_min ) || workbook.sheets( s ).rows.first() || ':' || alfan_col( t_col_max ) || workbook.sheets( s ).rows.last() || '"/>
 <sheetViews>
-<sheetView' || CASE WHEN s = 1 THEN ' tabSelected="1"' END || ' workbookViewId="0">';
+<sheetView' || CASE WHEN s = 1 THEN ' tabSelected="1"' END || ' workbookViewId="0">');
       IF workbook.sheets( s ).freeze_rows > 0 AND workbook.sheets( s ).freeze_cols > 0
       THEN
-        t_xxx := t_xxx || 
-               ( '<pane xSplit="' || workbook.sheets( s ).freeze_cols || '" ' || 
+        clob_vc_concat(t_xxx, t_tmp, '<pane xSplit="' || workbook.sheets( s ).freeze_cols || '" ' || 
                  'ySplit="' || workbook.sheets( s ).freeze_rows || '" ' ||
                  'topLeftCell="' || alfan_col( workbook.sheets( s ).freeze_cols + 1 ) || ( workbook.sheets( s ).freeze_rows + 1 ) || '" ' ||
                  'activePane="bottomLeft" state="frozen"/>'
@@ -1371,156 +1418,146 @@ IS
       ELSE
         IF workbook.sheets( s ).freeze_rows > 0
         THEN
-          t_xxx := t_xxx || '<pane ySplit="' || workbook.sheets( s ).freeze_rows || '" topLeftCell="A' || ( workbook.sheets( s ).freeze_rows + 1 ) || '" activePane="bottomLeft" state="frozen"/>';
+          clob_vc_concat(t_xxx, t_tmp, '<pane ySplit="' || workbook.sheets( s ).freeze_rows || '" topLeftCell="A' || ( workbook.sheets( s ).freeze_rows + 1 ) || '" activePane="bottomLeft" state="frozen"/>');
         END IF;
         IF workbook.sheets( s ).freeze_cols > 0
         THEN
-          t_xxx := t_xxx || '<pane xSplit="' || workbook.sheets( s ).freeze_cols || '" topLeftCell="' || alfan_col( workbook.sheets( s ).freeze_cols + 1 ) || '1" activePane="bottomLeft" state="frozen"/>';
+          clob_vc_concat(t_xxx, t_tmp, '<pane xSplit="' || workbook.sheets( s ).freeze_cols || '" topLeftCell="' || alfan_col( workbook.sheets( s ).freeze_cols + 1 ) || '1" activePane="bottomLeft" state="frozen"/>');
         END IF;
       END IF;
-      t_xxx := t_xxx || '</sheetView>
+      clob_vc_concat(t_xxx, t_tmp, '</sheetView>
 </sheetViews>
-<sheetFormatPr defaultRowHeight="15" x14ac:dyDescent="0.25"/>';
+<sheetFormatPr defaultRowHeight="15" x14ac:dyDescent="0.25"/>');
       IF workbook.sheets( s ).widths.count() > 0
       THEN
-        t_xxx := t_xxx || '<cols>';
+        clob_vc_concat(t_xxx, t_tmp, '<cols>');
         t_col_ind := workbook.sheets( s ).widths.first();
         WHILE t_col_ind IS NOT NULL
         LOOP
-          t_xxx := t_xxx ||
+          clob_vc_concat(t_xxx, t_tmp,
                    '<col min="' || t_col_ind || 
                    '" max="' || t_col_ind || 
                    '" width="' || to_char( workbook.sheets( s ).widths( t_col_ind ), 'TM9', 'NLS_NUMERIC_CHARACTERS=.,' ) || 
-                   '" customWidth="1"/>';
+                   '" customWidth="1"/>');
           t_col_ind := workbook.sheets( s ).widths.next( t_col_ind );
         END LOOP;
-        t_xxx := t_xxx || '</cols>';
+        clob_vc_concat(t_xxx, t_tmp, '</cols>');
       END IF;
-      t_xxx := t_xxx || '<sheetData>';
+      clob_vc_concat(t_xxx, t_tmp, '<sheetData>');
       t_row_ind := workbook.sheets( s ).rows.first();
-      t_tmp := NULL;
       WHILE t_row_ind IS NOT NULL
       LOOP
-        t_tmp :=  t_tmp || '<row r="' || t_row_ind || '" spans="' || t_col_min || ':' || t_col_max || '">';
-        t_len := length( t_tmp );
+        clob_vc_concat(t_xxx, t_tmp, '<row r="' || t_row_ind || '" spans="' || t_col_min || ':' || t_col_max || '">');
         t_col_ind := workbook.sheets( s ).rows( t_row_ind ).first();
         WHILE t_col_ind IS NOT NULL
         LOOP
-          t_cell := '<c r="' || alfan_col( t_col_ind ) || t_row_ind || '"' ||
+          clob_vc_concat(t_xxx, t_tmp, '<c r="' || alfan_col( t_col_ind ) || t_row_ind || '"' ||
                     ' ' || workbook.sheets( s ).ROWS( t_row_ind )( t_col_ind ).style_def ||
                     '><v>' || to_char( workbook.sheets( s ).ROWS( t_row_ind )( t_col_ind ).value_id, 'TM9', 'NLS_NUMERIC_CHARACTERS=.,' ) ||
-                    '</v></c>';
-          IF t_len > 32000
-          THEN
-            dbms_lob.writeappend( t_xxx, t_len, t_tmp );
-            t_tmp := NULL;
-            t_len := 0;
-          END IF;
-          t_tmp :=  t_tmp || t_cell;
-          t_len := t_len + length( t_cell );
+                    '</v></c>');
           t_col_ind := workbook.sheets( s ).rows( t_row_ind ).next( t_col_ind );
         END LOOP;
-        t_tmp :=  t_tmp || '</row>';
+        clob_vc_concat(t_xxx, t_tmp, '</row>');
         t_row_ind := workbook.sheets( s ).rows.next( t_row_ind );
       END LOOP;
-      t_tmp :=  t_tmp || '</sheetData>';
-      t_len := length( t_tmp );
-      dbms_lob.writeappend( t_xxx, t_len, t_tmp );
-      FOR A IN 1 ..  workbook.sheets( s ).autofilters.count()
+      clob_vc_concat(t_xxx, t_tmp, '</sheetData>');
+      FOR a IN 1 ..  workbook.sheets( s ).autofilters.count()
       LOOP
-        t_xxx := t_xxx || '<autoFilter ref="' ||
+        clob_vc_concat(t_xxx, t_tmp, '<autoFilter ref="' ||
                  alfan_col( nvl( workbook.sheets( s ).autofilters( A ).column_start, t_col_min ) ) ||
                  nvl( workbook.sheets( s ).autofilters( a ).row_start, workbook.sheets( s ).rows.first() ) || ':' ||
                  alfan_col( COALESCE( workbook.sheets( s ).autofilters( A ).column_end, workbook.sheets( s ).autofilters( A ).column_start, t_col_max ) ) ||
-                 nvl( workbook.sheets( s ).autofilters( a ).row_end, workbook.sheets( s ).rows.last() ) || '"/>';
+                 nvl( workbook.sheets( s ).autofilters( a ).row_end, workbook.sheets( s ).rows.last() ) || '"/>');
       END LOOP;
       IF workbook.sheets( s ).mergecells.count() > 0
       THEN
-        t_xxx := t_xxx || '<mergeCells count="' || to_char( workbook.sheets( s ).mergecells.count() ) || '">';
+        clob_vc_concat(t_xxx, t_tmp, '<mergeCells count="' || to_char( workbook.sheets( s ).mergecells.count() ) || '">');
         FOR m IN 1 ..  workbook.sheets( s ).mergecells.count()
         LOOP
-          t_xxx := t_xxx || '<mergeCell ref="' || workbook.sheets( s ).mergecells( m ) || '"/>';
+          clob_vc_concat(t_xxx, t_tmp, '<mergeCell ref="' || workbook.sheets( s ).mergecells( m ) || '"/>');
         END LOOP;
-        t_xxx := t_xxx || '</mergeCells>';
+        clob_vc_concat(t_xxx, t_tmp, '</mergeCells>');
       END IF;
 
       IF workbook.sheets( s ).validations.count() > 0
       THEN
-        t_xxx := t_xxx || '<dataValidations count="' || to_char( workbook.sheets( s ).validations.count() ) || '">';
+        clob_vc_concat(t_xxx, t_tmp, '<dataValidations count="' || to_char( workbook.sheets( s ).validations.count() ) || '">');
         FOR m IN 1 ..  workbook.sheets( s ).validations.count()
         LOOP
-          t_xxx := t_xxx || '<dataValidation' ||
+          clob_vc_concat(t_xxx, t_tmp, '<dataValidation' ||
                    ' type="' || workbook.sheets( s ).validations( m ).TYPE || '"' ||
                    ' errorStyle="' || workbook.sheets( s ).validations( m ).errorstyle || '"' ||
                    ' allowBlank="' || CASE WHEN nvl( workbook.sheets( s ).validations( m ).allowBlank, TRUE ) THEN '1' ELSE '0' END || '"' ||
-                   ' sqref="' || workbook.sheets( s ).validations( m ).sqref || '"';
+                   ' sqref="' || workbook.sheets( s ).validations( m ).sqref || '"');
           IF workbook.sheets( s ).validations( m ).prompt IS NOT NULL
           THEN
-            t_xxx := t_xxx || ' showInputMessage="1" prompt="' || workbook.sheets( s ).validations( m ).prompt || '"';
+            clob_vc_concat(t_xxx, t_tmp, ' showInputMessage="1" prompt="' || workbook.sheets( s ).validations( m ).prompt || '"');
             IF workbook.sheets( s ).validations( m ).title IS NOT NULL
             THEN
-              t_xxx := t_xxx || ' promptTitle="' || workbook.sheets( s ).validations( m ).title || '"';
+              clob_vc_concat(t_xxx, t_tmp, ' promptTitle="' || workbook.sheets( s ).validations( m ).title || '"');
             END IF;
           END IF;
           IF workbook.sheets( s ).validations( m ).showerrormessage
           THEN
-            t_xxx := t_xxx || ' showErrorMessage="1"';
+            clob_vc_concat(t_xxx, t_tmp, ' showErrorMessage="1"');
             IF workbook.sheets( s ).validations( m ).error_title IS NOT NULL
             THEN
-              t_xxx := t_xxx || ' errorTitle="' || workbook.sheets( s ).validations( m ).error_title || '"';
+              clob_vc_concat(t_xxx, t_tmp, ' errorTitle="' || workbook.sheets( s ).validations( m ).error_title || '"');
             END IF;
             if workbook.sheets( s ).validations( m ).error_txt IS NOT NULL
-            then
-              t_xxx := t_xxx || ' error="' || workbook.sheets( s ).validations( m ).error_txt || '"';
+            THEN
+              clob_vc_concat(t_xxx, t_tmp, ' error="' || workbook.sheets( s ).validations( m ).error_txt || '"');
             END IF;
           END IF;
-          t_xxx := t_xxx || '>';
+          clob_vc_concat(t_xxx, t_tmp, '>');
           IF workbook.sheets( s ).validations( m ).formula1 IS NOT NULL
-          then
-            t_xxx := t_xxx || '<formula1>' || workbook.sheets( s ).validations( m ).formula1 || '</formula1>';
+          THEN
+            clob_vc_concat(t_xxx, t_tmp, '<formula1>' || workbook.sheets( s ).validations( m ).formula1 || '</formula1>');
           END IF;
           IF workbook.sheets( s ).validations( m ).formula2 IS NOT NULL
           THEN
-            t_xxx := t_xxx || '<formula2>' || workbook.sheets( s ).validations( m ).formula2 || '</formula2>';
+            clob_vc_concat(t_xxx, t_tmp, '<formula2>' || workbook.sheets( s ).validations( m ).formula2 || '</formula2>');
           END IF;
-          t_xxx := t_xxx || '</dataValidation>';
+          clob_vc_concat(t_xxx, t_tmp, '</dataValidation>');
         END LOOP;
-        t_xxx := t_xxx || '</dataValidations>';
+        clob_vc_concat(t_xxx, t_tmp, '</dataValidations>');
       END IF;
 
       IF workbook.sheets( s ).hyperlinks.count() > 0
       THEN
-        t_xxx := t_xxx || '<hyperlinks>';
+        clob_vc_concat(t_xxx, t_tmp, '<hyperlinks>');
         FOR h IN 1 ..  workbook.sheets( s ).hyperlinks.count()
         LOOP
-          t_xxx := t_xxx || '<hyperlink ref="' || workbook.sheets( s ).hyperlinks( h ).cell || '" r:id="rId' || h || '"/>';
+          clob_vc_concat(t_xxx, t_tmp, '<hyperlink ref="' || workbook.sheets( s ).hyperlinks( h ).cell || '" r:id="rId' || h || '"/>');
         END LOOP;
-        t_xxx := t_xxx || '</hyperlinks>';
+        clob_vc_concat(t_xxx, t_tmp, '</hyperlinks>');
       END IF;
-      t_xxx := t_xxx || '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>';
+      clob_vc_concat(t_xxx, t_tmp, '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>');
       IF workbook.sheets( s ).comments.count() > 0
       THEN
-        t_xxx := t_xxx || '<legacyDrawing r:id="rId' || ( workbook.sheets( s ).hyperlinks.count() + 1 ) || '"/>';
+        clob_vc_concat(t_xxx, t_tmp, '<legacyDrawing r:id="rId' || ( workbook.sheets( s ).hyperlinks.count() + 1 ) || '"/>');
       END IF;
 
-      t_xxx := t_xxx || '</worksheet>';
+      clob_vc_concat(t_xxx, t_tmp, '</worksheet>', TRUE);
       zip_util_pkg.add_file( t_excel, 'xl/worksheets/sheet' || s || '.xml', t_xxx );
+      t_xxx := NULL;
 
       IF workbook.sheets( s ).hyperlinks.count() > 0 OR workbook.sheets( s ).comments.count() > 0
       THEN
-        t_xxx := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+        clob_vc_concat(t_xxx, t_tmp, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">');
         IF workbook.sheets( s ).comments.count() > 0
         THEN
-          t_xxx := t_xxx || '<Relationship Id="rId' || ( workbook.sheets( s ).hyperlinks.count() + 2 ) || '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments' || s || '.xml"/>';
-          t_xxx := t_xxx || '<Relationship Id="rId' || ( workbook.sheets( s ).hyperlinks.count() + 1 ) || '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing' || s || '.vml"/>';
+          clob_vc_concat(t_xxx, t_tmp, '<Relationship Id="rId' || ( workbook.sheets( s ).hyperlinks.count() + 2 ) || '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments' || s || '.xml"/>');
+          clob_vc_concat(t_xxx, t_tmp, '<Relationship Id="rId' || ( workbook.sheets( s ).hyperlinks.count() + 1 ) || '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing' || s || '.vml"/>');
         END IF;
         FOR h IN 1 ..  workbook.sheets( s ).hyperlinks.count()
         LOOP
-          t_xxx := t_xxx || '<Relationship Id="rId' || h || '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' || workbook.sheets( s ).hyperlinks( h ).url || '" TargetMode="External"/>';
+          clob_vc_concat(t_xxx, t_tmp, '<Relationship Id="rId' || h || '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' || workbook.sheets( s ).hyperlinks( h ).url || '" TargetMode="External"/>');
         END LOOP;
-        t_xxx := t_xxx || '</Relationships>';
+        clob_vc_concat(t_xxx, t_tmp, '</Relationships>', TRUE);
         zip_util_pkg.add_file( t_excel, 'xl/worksheets/_rels/sheet' || s || '.xml.rels', t_xxx );
+        t_xxx := NULL;
       END IF;
 
       IF workbook.sheets( s ).comments.count() > 0
@@ -1534,51 +1571,52 @@ IS
           LOOP
             authors( workbook.sheets( s ).comments( c ).author ) := 0;
           END LOOP;
-          t_xxx := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          clob_vc_concat(t_xxx, t_tmp, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <comments xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<authors>';
+<authors>');
           cnt := 0;
           author_ind := authors.FIRST();
           WHILE author_ind IS NOT NULL OR authors.NEXT( author_ind ) IS NOT NULL
           LOOP
             authors( author_ind ) := cnt;
-            t_xxx := t_xxx || '<author>' || author_ind || '</author>';
+            clob_vc_concat(t_xxx, t_tmp, '<author>' || author_ind || '</author>');
             cnt := cnt + 1;
             author_ind := authors.next( author_ind );
           END LOOP;
         END;
-        t_xxx := t_xxx || '</authors><commentList>';
+        clob_vc_concat(t_xxx, t_tmp, '</authors><commentList>');
         FOR c IN 1 .. workbook.sheets( s ).comments.count()
         LOOP
-          t_xxx := t_xxx || '<comment ref="' || alfan_col( workbook.sheets( s ).comments( c ).COLUMN ) ||
+          clob_vc_concat(t_xxx, t_tmp, '<comment ref="' || alfan_col( workbook.sheets( s ).comments( c ).COLUMN ) ||
                    to_char( workbook.sheets( s ).comments( c ).ROW || 
                    '" authorId="' || authors( workbook.sheets( s ).comments( c ).author ) ) || '">
-<text>';
+<text>');
           IF workbook.sheets( s ).comments( c ).author IS NOT NULL
           THEN
-            t_xxx := t_xxx || 
+            clob_vc_concat(t_xxx, t_tmp, 
                      '<r><rPr><b/><sz val="9"/><color indexed="81"/><rFont val="Tahoma"/><charset val="1"/></rPr><t xml:space="preserve">' ||
-                     workbook.sheets( s ).comments( c ).author || ':</t></r>';
+                     workbook.sheets( s ).comments( c ).author || ':</t></r>');
           END IF;
-          t_xxx := t_xxx || 
+          clob_vc_concat(t_xxx, t_tmp, 
                    '<r><rPr><sz val="9"/><color indexed="81"/><rFont val="Tahoma"/><charset val="1"/></rPr><t xml:space="preserve">' ||
                    CASE WHEN workbook.sheets( s ).comments( c ).author IS NOT NULL THEN '
-' end || workbook.sheets( s ).comments( c ).text || '</t></r></text></comment>';
+' end || workbook.sheets( s ).comments( c ).text || '</t></r></text></comment>');
         END LOOP;
-        t_xxx := t_xxx || '</commentList></comments>';
+        clob_vc_concat(t_xxx, t_tmp, '</commentList></comments>', TRUE);
         zip_util_pkg.add_file( t_excel, 'xl/comments' || s || '.xml', t_xxx );
+        t_xxx := NULL;
 
-        t_xxx := '<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+        clob_vc_concat(t_xxx, t_tmp, '<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
 <o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="2"/></o:shapelayout>
-<v:shapetype id="_x0000_t202" coordsize="21600,21600" o:spt="202" path="m,l,21600r21600,l21600,xe"><v:stroke joinstyle="miter"/><v:path gradientshapeok="t" o:connecttype="rect"/></v:shapetype>';
+<v:shapetype id="_x0000_t202" coordsize="21600,21600" o:spt="202" path="m,l,21600r21600,l21600,xe"><v:stroke joinstyle="miter"/><v:path gradientshapeok="t" o:connecttype="rect"/></v:shapetype>');
         FOR c IN 1 .. workbook.sheets( s ).comments.count()
         LOOP
-          t_xxx := t_xxx || '<v:shape id="_x0000_s' || to_char( c ) || 
+          clob_vc_concat(t_xxx, t_tmp, '<v:shape id="_x0000_s' || to_char( c ) || 
                    '" type="#_x0000_t202" style="position:absolute;margin-left:35.25pt;margin-top:3pt;z-index:' || to_char( c ) ||
                    ';visibility:hidden;" fillcolor="#ffffe1" o:insetmode="auto">
 <v:fill color2="#ffffe1"/><v:shadow on="t" color="black" obscured="t"/><v:path o:connecttype="none"/>
 <v:textbox style="mso-direction-alt:auto"><div style="text-align:left"></div></v:textbox>
-<x:ClientData ObjectType="Note"><x:MoveWithCells/><x:SizeWithCells/>';
+<x:ClientData ObjectType="Note"><x:MoveWithCells/><x:SizeWithCells/>');
           t_w := workbook.sheets( s ).comments( c ).width;
           t_c := 1;
           LOOP
@@ -1594,51 +1632,47 @@ IS
             t_w := t_w - t_cw;
           END LOOP;
           t_h := workbook.sheets( s ).comments( c ).height;
-          t_xxx := t_xxx || to_char( '<x:Anchor>' || workbook.sheets( s ).comments( c ).column || ',15,' ||
+          clob_vc_concat(t_xxx, t_tmp, to_char( '<x:Anchor>' || workbook.sheets( s ).comments( c ).column || ',15,' ||
                                      workbook.sheets( s ).comments( c ).row || ',30,' ||
                                      ( workbook.sheets( s ).comments( c ).column + t_c - 1 ) || ',' || round( t_w ) || ',' ||
-                                     ( workbook.sheets( s ).comments( c ).row + 1 + trunc( t_h / 20 ) ) || ',' || mod( t_h, 20 ) || 
-                                     '</x:Anchor>' );
-          t_xxx := t_xxx || to_char( '<x:AutoFill>FALSE</x:AutoFill><x:Row>' ||
+                                     ( workbook.sheets( s ).comments( c ).ROW + 1 + trunc( t_h / 20 ) ) || ',' || mod( t_h, 20 ) || 
+                                     '</x:Anchor>' ));
+          clob_vc_concat(t_xxx, t_tmp, to_char( '<x:AutoFill>FALSE</x:AutoFill><x:Row>' ||
                                      ( workbook.sheets( s ).comments( c ).row - 1 ) ||
                                      '</x:Row><x:Column>' ||
-                                     ( workbook.sheets( s ).comments( c ).column - 1 ) || 
-                                     '</x:Column></x:ClientData></v:shape>' );
+                                     ( workbook.sheets( s ).comments( c ).COLUMN - 1 ) || 
+                                     '</x:Column></x:ClientData></v:shape>' ));
         END LOOP;
-        t_xxx := t_xxx || '</xml>';
+        clob_vc_concat(t_xxx, t_tmp, '</xml>', TRUE);
         zip_util_pkg.add_file( t_excel, 'xl/drawings/vmlDrawing' || s || '.vml', t_xxx );
+        t_xxx := NULL;
       END IF;
 
     END LOOP;
 
-    t_xxx := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    clob_vc_concat(t_xxx, t_tmp, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>';
+<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>');
     FOR s IN 1 .. workbook.sheets.count()
     LOOP
-      t_xxx := t_xxx || '
-<Relationship Id="rId' || ( 9 + s ) || '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' || s || '.xml"/>';
+      clob_vc_concat(t_xxx, t_tmp, '
+<Relationship Id="rId' || ( 9 + s ) || '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' || s || '.xml"/>');
     END LOOP;
-    t_xxx := t_xxx || '</Relationships>';
+    clob_vc_concat(t_xxx, t_tmp, '</Relationships>', TRUE);
     zip_util_pkg.add_file( t_excel, 'xl/_rels/workbook.xml.rels', t_xxx );
+    t_xxx := NULL;
 
-    t_xxx := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="' || workbook.str_cnt || '" uniqueCount="' || workbook.strings.count() || '">';
-    t_tmp := NULL;
+    clob_vc_concat(t_xxx, t_tmp, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="' || workbook.str_cnt || '" uniqueCount="' || workbook.strings.count() || '">');
     FOR i IN 0 .. workbook.str_ind.count() - 1
     LOOP
-      t_str := '<si><t>' || dbms_xmlgen.CONVERT( substr( workbook.str_ind( i ), 1, 32000 ) ) || '</t></si>';
-      IF length( t_tmp ) + length( t_str ) > 32000
-      THEN
-        t_xxx := t_xxx || t_tmp;
-        t_tmp := NULL;
-      END IF;
-      t_tmp := t_tmp || t_str;
+      clob_vc_concat(t_xxx, t_tmp, '<si><t>' || dbms_xmlgen.CONVERT( substr( workbook.str_ind( i ), 1, 32000 ) ) || '</t></si>');
     END LOOP;
-    t_xxx := t_xxx || t_tmp || '</sst>';
+    clob_vc_concat(t_xxx, t_tmp, '</sst>', TRUE);
     zip_util_pkg.add_file( t_excel, 'xl/sharedStrings.xml', t_xxx );
+    t_xxx := NULL;
     zip_util_pkg.finish_zip( t_excel );
     clear_workbook;
     RETURN t_excel;
