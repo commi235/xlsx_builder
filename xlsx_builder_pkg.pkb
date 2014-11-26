@@ -142,7 +142,7 @@ IS
   /* Private API */
 
   /**
-  * Procedure concatinates a VARCHAR2 to an CLOB.
+  * Procedure concatenates a VARCHAR2 to an CLOB.
   * It uses another VARCHAR2 as a buffer until it reaches 32767 characters.
   * Then it flushes the current buffer to the CLOB and resets the buffer using
   * the actual VARCHAR2 to add.
@@ -160,30 +160,27 @@ IS
                           , p_eof IN BOOLEAN DEFAULT FALSE
                           )
   AS
-    l_vc_buffer_flushed BOOLEAN := FALSE;
   BEGIN
-    -- Init
-    IF p_clob IS NULL THEN
-      dbms_lob.createtemporary(p_clob, TRUE);
-    END IF;
     
     -- Standard Flow
     IF NVL(LENGTHB(p_vc_buffer), 0) + NVL(LENGTHB(p_vc_addition), 0) < 32767 THEN
       p_vc_buffer := p_vc_buffer || p_vc_addition;
     ELSE
-        dbms_lob.writeappend(p_clob, length(p_vc_buffer), p_vc_buffer);
-        p_vc_buffer := p_vc_addition;
-        l_vc_buffer_flushed := TRUE;
+      IF p_clob IS NULL THEN
+        dbms_lob.createtemporary(p_clob, TRUE);
+      END IF;
+      dbms_lob.writeappend(p_clob, length(p_vc_buffer), p_vc_buffer);
+      p_vc_buffer := p_vc_addition;
     END IF;
     
     -- Full Flush requested
     IF p_eof THEN
-      IF l_vc_buffer_flushed THEN
-        dbms_lob.writeappend(p_clob, length(p_vc_addition), p_vc_addition);
+      IF p_clob IS NULL THEN
+        p_clob := p_vc_buffer;
       ELSE
-        dbms_lob.writeappend(p_clob, length(p_vc_buffer), p_vc_buffer);
+        dbms_lob.writeappend(p_clob, LENGTH(p_vc_buffer), p_vc_buffer);
       END IF;
-      p_vc_buffer := NULL;
+    p_vc_buffer := NULL;
     END IF;
   END clob_vc_concat;
 
@@ -583,8 +580,9 @@ IS
   AS
     t_sheet PLS_INTEGER := nvl( p_sheet, workbook.sheets.count() );
   BEGIN
-    workbook.sheets( t_sheet ).rows( p_row )( p_col ).value_id := p_value;
-    workbook.sheets( t_sheet ).rows( p_row )( p_col ).style_def := NULL;
+    workbook.sheets( t_sheet ).ROWS( p_row )( p_col ).value_id := p_value;
+    -- shouldn't be needed
+    --workbook.sheets( t_sheet ).rows( p_row )( p_col ).style_def := NULL;
     workbook.sheets( t_sheet ).ROWS( p_row )( p_col ).style_def := get_XfId( t_sheet, p_col, p_row, p_numFmtId, p_fontId, p_fillId, p_borderId, p_alignment );
   END cell;
 
