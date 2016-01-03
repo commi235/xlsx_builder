@@ -468,10 +468,10 @@ IS
    BEGIN
       IF TRUNC (p_value) >= TO_DATE ('01-01-1900', 'MM-DD-YYYY')
       THEN
-         l_date_diff := 1;
+         l_date_diff := 2;
       END IF;
 
-      RETURN (TRUNC (p_value) + l_date_diff) - (TO_DATE ('01-01-1900', 'MM-DD-YYYY') - 1);
+      RETURN ( ( TRUNC (p_value) - TO_DATE ('01-01-1900', 'MM-DD-YYYY') ) + l_date_diff );
    END oradatetoexcel;
 
    FUNCTION oranumfmt2excel (p_format VARCHAR2)
