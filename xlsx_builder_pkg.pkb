@@ -244,7 +244,7 @@ IS
    * Your final call needs to be done setting p_eof to TRUE in order to
    * flush everything to the CLOB.
    *
-   * @param p_clob        The CLOB buffer.
+   * @param p_clob        The CLOB you want to append to.
    * @param p_vc_buffer   The intermediate VARCHAR2 buffer. (must be VARCHAR2(32767))
    * @param p_vc_addition The VARCHAR2 value you want to append.
    * @param p_eof         Indicates if complete buffer should be flushed to CLOB.
