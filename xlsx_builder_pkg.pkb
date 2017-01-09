@@ -471,7 +471,7 @@ IS
          l_date_diff := 2;
       END IF;
 
-      RETURN ( ( TRUNC (p_value) - TO_DATE ('01-01-1900', 'MM-DD-YYYY') ) + l_date_diff );
+      RETURN ( ( p_value - TO_DATE ('01-01-1900', 'MM-DD-YYYY') ) + l_date_diff );
    END oradatetoexcel;
 
    FUNCTION oranumfmt2excel (p_format VARCHAR2)
