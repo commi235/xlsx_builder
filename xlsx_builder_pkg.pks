@@ -49,6 +49,11 @@ IS
    **     For concatenation operations (in particular where record fields are involved) added a lot of TO_CHAR (...)
    **     to make sure correct explicit conversion (mayby not all caught where necessary)
    **     To make this easier to recognize, inducted some naming conventions and renamed some elements.
+   **   Date: 26-04-2017 (MP)
+   **     Added new function "query2sheet2" which is faster.
+   **     For dates used following logic:
+   **       - if trunc([column])=[column], then outputed cell value is formatted to format YYYYMMDD;
+   **       - otherwise, outputted cell value is formatted to format YYYYMMDDTHH24MISS;
    ******************************************************************************
    ******************************************************************************
    Copyright (C) 2011, 2012 by Anton Scheffer
@@ -351,6 +356,18 @@ IS
       RETURN BLOB;
 
    FUNCTION query2sheet (p_sql VARCHAR2, p_column_headers BOOLEAN := TRUE, p_sheet PLS_INTEGER := NULL)
+      RETURN BLOB;
+
+   FUNCTION finish2 (p_clob                 IN OUT NOCOPY CLOB,
+                     p_columns              PLS_INTEGER,
+                     p_rows                 PLS_INTEGER,
+                     p_XLSX_date_format     VARCHAR2,
+                     p_XLSX_datetime_format VARCHAR2)
+      RETURN BLOB;
+
+   FUNCTION query2sheet2(p_sql                  VARCHAR2,
+                         p_XLSX_date_format     VARCHAR2 := 'dd/mm/yyyy',
+                         p_XLSX_datetime_format VARCHAR2 := 'dd/mm/yyyy hh24:mi:ss')
       RETURN BLOB;
 END;
 /
