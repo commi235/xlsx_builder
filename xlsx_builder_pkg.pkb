@@ -2419,7 +2419,7 @@ IS
       d_tab         DBMS_SQL.date_table;
       n_tab         DBMS_SQL.number_table;
       v_tab         DBMS_SQL.varchar2_table;
-      t_bulk_size   PLS_INTEGER := 1000;
+      t_bulk_size   PLS_INTEGER := 200;
       t_r           INTEGER;
       t_cur_row     PLS_INTEGER;
    BEGIN
