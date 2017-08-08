@@ -1,7 +1,6 @@
 CREATE OR REPLACE 
 PACKAGE BODY xlsx_builder_pkg
 IS
-
    /* Some Naming-conventions
    Prefixes for Datatypes in defined Records-Type-Elements
    vc   VARCHAR2
@@ -2566,5 +2565,266 @@ IS
 
          RETURN NULL;
    END query2sheet;
+
+   FUNCTION finish2 (p_clob                 IN OUT NOCOPY CLOB,
+                     p_columns              PLS_INTEGER,
+                     p_rows                 PLS_INTEGER,
+                     p_XLSX_date_format     VARCHAR2,
+                     p_XLSX_datetime_format VARCHAR2)
+      RETURN BLOB
+   AS
+      t_excel               BLOB;
+      t_xxx                 CLOB;
+      t_str                 VARCHAR2 (32767);
+   BEGIN
+      DBMS_LOB.createtemporary (t_excel, TRUE);
+	  DBMS_LOB.createtemporary (t_xxx, TRUE);
+	  --
+      t_str := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+           xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+	<dimension ref="A1:'
+                       || alfan_col (p_columns)
+                       || p_rows
+                       || '"/>
+	<sheetViews>
+		<sheetView tabSelected="1"
+		           workbookViewId="0">
+			<pane ySplit="1"
+			      topLeftCell="A2"
+			      activePane="bottomLeft"
+			      state="frozen"/>
+			<selection pane="bottomLeft"
+			           activeCell="A2"
+			           sqref="A2"/>
+		</sheetView>
+	</sheetViews><sheetData>';
+      DBMS_LOB.writeappend (t_xxx, length(t_str), t_str);
+	  DBMS_LOB.append (t_xxx, p_clob);
+	  DBMS_LOB.freetemporary (p_clob);
+      t_str := '</sheetData><autoFilter ref="A1:'
+                             || alfan_col (p_columns)
+                             || p_rows
+							 || '"/>
+</worksheet>';
+      DBMS_LOB.writeappend (t_xxx, length(t_str), t_str);
+      zip_util_pkg.add_file (t_excel, 'xl/worksheets/sheet1.xml', t_xxx);
+      dbms_lob.trim( t_xxx, 0 );
+      --
+      t_str := '<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+	<Default Extension="xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml" />
+	<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />
+	<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml" />
+	<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml" />
+	<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+</Types>';
+      DBMS_LOB.writeappend (t_xxx, length(t_str), t_str);
+      zip_util_pkg.add_file (t_excel, '[Content_Types].xml', t_xxx);
+      dbms_lob.trim( t_xxx, 0 );
+      --
+      t_str := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+	<Relationship Target="xl/workbook.xml" Id="r_main" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"/>
+	<Relationship Target="docProps/core.xml" Id="r_props" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"/>
+</Relationships>';
+      DBMS_LOB.writeappend (t_xxx, length(t_str), t_str);
+      zip_util_pkg.add_file (t_excel, '_rels/.rels', t_xxx);
+      dbms_lob.trim( t_xxx, 0 );
+      --
+      t_str := '<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+	<sheets>
+		<sheet name="Sheet1"
+		       sheetId="1"
+		       r:id="r_sheet1" />
+	</sheets>
+	<definedNames>
+		<definedName name="_xlnm._FilterDatabase"
+		             localSheetId="0"
+		             hidden="1">Sheet1!$A$1:'
+					 || alfan_col(p_columns) || '$' || p_rows
+					 || '</definedName>
+	</definedNames>
+</workbook>';
+      DBMS_LOB.writeappend (t_xxx, length(t_str), t_str);
+      zip_util_pkg.add_file (t_excel, 'xl/workbook.xml', t_xxx);
+      dbms_lob.trim( t_xxx, 0 );
+      --
+      t_str := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+                   xmlns:dc="http://purl.org/dc/elements/1.1/"
+                   xmlns:dcterms="http://purl.org/dc/terms/"
+                   xmlns:dcmitype="http://purl.org/dc/dcmitype/"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<dc:creator>'
+		|| NVL(v('APP_USER'),SYS_CONTEXT ('userenv', 'os_user'))
+		|| '</dc:creator>
+	<cp:lastModifiedBy>'
+		|| NVL(v('APP_USER'),SYS_CONTEXT ('userenv', 'os_user'))
+		|| '</cp:lastModifiedBy>
+	<dcterms:created xsi:type="dcterms:W3CDTF">'
+		|| TO_CHAR (sysdate, 'yyyy-mm-dd"T"hh24:mi:ss')
+		|| '</dcterms:created>
+	<dcterms:modified xsi:type="dcterms:W3CDTF">'
+		|| TO_CHAR (sysdate, 'yyyy-mm-dd"T"hh24:mi:ss')
+		|| '</dcterms:modified>
+</cp:coreProperties>';
+	  DBMS_LOB.writeappend (t_xxx, length(t_str), t_str);
+      zip_util_pkg.add_file (t_excel, 'docProps/core.xml', t_xxx);
+      dbms_lob.trim( t_xxx, 0 );
+      --
+      t_str := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+	<numFmts count="2">
+		<numFmt numFmtId="1000"
+		        formatCode="' || orafmt2excel(p_XLSX_date_format) || '" />
+		<numFmt numFmtId="1001"
+		        formatCode="' || orafmt2excel(p_XLSX_datetime_format) || '" />
+	</numFmts>
+	<fonts count="2">
+		<font />
+		<font>
+			<b/>
+		</font>
+	</fonts>
+	<fills count="3">
+		<fill>
+			<patternFill patternType="none"/>
+		</fill>
+		<fill>
+			<patternFill patternType="gray125"/>
+		</fill>
+		<fill>
+			<patternFill patternType="solid">
+				<fgColor rgb="FFE1E1E1"/>
+				<bgColor indexed="64"/>
+			</patternFill>
+		</fill>
+	</fills>
+	<borders count="1">
+		<border />
+	</borders>
+	<cellStyleXfs count="1">
+		<xf />
+	</cellStyleXfs>
+	<cellXfs count="4">
+		<xf />
+		<xf fontId="1" fillId="2" applyFont="1" applyFill="1"/>
+		<xf numFmtId="1000" />
+		<xf numFmtId="1001" />
+	</cellXfs>
+</styleSheet>';
+      DBMS_LOB.writeappend (t_xxx, length(t_str), t_str);
+      zip_util_pkg.add_file (t_excel, 'xl/styles.xml', t_xxx);
+      dbms_lob.trim( t_xxx, 0 );
+      --
+      t_str := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+	<Relationship Target="worksheets/sheet1.xml" Id="r_sheet1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"/>
+	<Relationship Target="styles.xml" Id="r_styles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"/>
+</Relationships>';
+      DBMS_LOB.writeappend (t_xxx, length(t_str), t_str);
+      zip_util_pkg.add_file (t_excel, 'xl/_rels/workbook.xml.rels', t_xxx);
+      dbms_lob.trim( t_xxx, 0 );
+      --
+      zip_util_pkg.finish_zip (t_excel);
+      DBMS_LOB.freetemporary (t_xxx);
+      RETURN t_excel;
+   exception
+    when others then
+        raise_application_error(-20002, '|+|' || sqlerrm || ',' || DBMS_UTILITY.FORMAT_ERROR_BACKTRACE || '|+|');
+   END finish2;
+
+   FUNCTION query2sheet2(p_sql                  VARCHAR2,
+                         p_XLSX_date_format     VARCHAR2 := 'dd/mm/yyyy',
+                         p_XLSX_datetime_format VARCHAR2 := 'dd/mm/yyyy hh24:mi:ss')
+      RETURN BLOB
+   AS
+      t_c               INTEGER;
+      t_r               INTEGER;
+      t_desc_tab        DBMS_SQL.desc_tab2;
+      t_clob_sql        CLOB;
+      t_clob_result     CLOB;
+      t_column_name     VARCHAR2(30);
+      t_column_type     VARCHAR2(10);
+      t_str             VARCHAR2(32767);
+      t_cols_count      PLS_INTEGER := 0;
+      t_rows_count      PLS_INTEGER := 0;
+   BEGIN
+      DBMS_LOB.createtemporary (t_clob_sql, true);
+      t_c := DBMS_SQL.open_cursor;
+      DBMS_SQL.parse (t_c, p_sql, DBMS_SQL.native);
+      DBMS_SQL.describe_columns2 (t_c, t_cols_count, t_desc_tab);
+
+      t_str := 'select xmlserialize(content xmlagg(t_xml)) as t_xml, count(*) as cnt from ( select '
+            ||      'xmlelement("row",';
+      DBMS_LOB.writeappend(t_clob_sql, length(t_str), t_str);
+      FOR c IN 1 .. t_cols_count
+      LOOP
+         t_column_name := t_desc_tab (c).col_name;
+         t_str := 'xmlelement("c",xmlattributes(''inlineStr'' as "t",''1'' as "s"),xmlelement("is",xmlelement("t",xmlcdata('''||t_column_name||'''))))' || case when c != t_cols_count then ',' end;
+         DBMS_LOB.writeappend(t_clob_sql, length(t_str), t_str);
+      END LOOP;
+      t_str := ') as t_xml from dual ';
+      
+      DBMS_LOB.writeappend(t_clob_sql, length(t_str), t_str);
+      t_str := ' union all select '
+            ||      'xmlelement("row",';
+      DBMS_LOB.writeappend(t_clob_sql, length(t_str), t_str);
+      FOR c IN 1 .. t_cols_count
+      LOOP
+         t_column_name := t_desc_tab (c).col_name;
+         t_column_type :=
+            case
+                when t_desc_tab(c).col_type IN (2,100,101)              then 'n' -- number
+                when t_desc_tab(c).col_type IN (12,178,179,180,181,231) then 'd' -- date
+                when t_desc_tab(c).col_type IN (1,9,96,112)             then 'inlineStr' -- char
+                when t_desc_tab(c).col_type IN (8)                      then 'long' -- long
+                else 'other'
+            end;
+         t_str :=
+                'xmlelement("c",'
+              ||    'xmlattributes('''||case when t_column_type in ('long','other') then 'inlineStr' else t_column_type end||''' as "t"'
+              ||case when t_column_type != 'd' then '),' else ',case when nvl(trunc('||t_column_name||'),trunc(sysdate))=nvl('||t_column_name||',trunc(sysdate)) then ''2'' else ''3'' end as "s"),' end
+              ||case
+                    when t_column_type = 'inlineStr' then
+                        'xmlelement("is",xmlelement("t",xmlcdata('||t_column_name||')))'
+                    when t_column_type = 'long' then
+                        'xmlelement("is",xmlelement("t",xmlcdata(''I don''''t know how to select longs'')))'
+                    when t_column_type = 'other' then
+                        'xmlelement("is",xmlelement("t",xmlcdata(to_clob('||t_column_name||'))))'
+                    else
+                        'case '
+                        ||'when '||t_column_name||' is not null then xmlelement("v",'||case when t_column_type='d' then 'case when nvl(trunc('||t_column_name||'),trunc(sysdate))=nvl('||t_column_name||',trunc(sysdate)) then to_char('||t_column_name||',''yyyymmdd'') else to_char('||t_column_name||',''yyyymmdd"T"hh24miss'') end' else 'xmlcdata('||t_column_name||')' end ||') '
+                        ||'else xmlelement("v") '
+                        ||'end'
+                end
+              ||')'
+              || case when c != t_cols_count then ',' end;
+         DBMS_LOB.writeappend(t_clob_sql, length(t_str), t_str);
+      END LOOP;
+      t_str := ') as t_xml FROM ( ' || p_sql || ' )) ';
+      DBMS_LOB.writeappend (t_clob_sql, length(t_str), t_str);
+      DBMS_SQL.parse (t_c, t_clob_sql, DBMS_SQL.native);
+      DBMS_LOB.freetemporary (t_clob_sql);
+      DBMS_SQL.define_column (t_c, 1, t_clob_result);
+      DBMS_SQL.define_column (t_c, 2, t_rows_count);
+      t_r := DBMS_SQL.execute_and_fetch (t_c);
+      DBMS_SQL.column_value (t_c, 1, t_clob_result);
+      DBMS_SQL.column_value (t_c, 2, t_rows_count);
+      DBMS_SQL.close_cursor (t_c);
+      return finish2(p_clob             => t_clob_result,
+                     p_columns          => t_cols_count,
+                     p_rows             => t_rows_count,
+                     p_XLSX_date_format      => p_XLSX_date_format,
+                     p_XLSX_datetime_format  => p_XLSX_datetime_format) ;
+   EXCEPTION
+      WHEN OTHERS THEN
+         IF DBMS_SQL.is_open (t_c) THEN DBMS_SQL.close_cursor (t_c); END IF;
+         if DBMS_LOB.istemporary (t_clob_sql)=1 then DBMS_LOB.freetemporary (t_clob_sql); end if;
+         raise_application_error(-20001, '|+|' || sqlerrm || ',' || DBMS_UTILITY.FORMAT_ERROR_BACKTRACE || '|+|');
+   END query2sheet2;
 END;
 /
