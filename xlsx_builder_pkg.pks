@@ -94,6 +94,10 @@ IS
       bo_wraptext     BOOLEAN
    );
 
+   type t_bind_tab is table of varchar2(32767) index by varchar2(32767);
+
+   type t_header_tab is table of varchar2(32767) index by pls_integer;
+
    /**
    * Clears the whole workbook to start fresh.
    */
@@ -369,5 +373,16 @@ IS
                          p_XLSX_date_format     VARCHAR2 := 'dd/mm/yyyy',
                          p_XLSX_datetime_format VARCHAR2 := 'dd/mm/yyyy hh24:mi:ss')
       RETURN BLOB;
+
+   function query2sheet3
+   (
+     p_sql     in varchar2
+   , p_binds   in t_bind_tab
+   , p_headers in t_header_tab
+   , p_XLSX_date_format     VARCHAR2 := 'dd/mm/yyyy'
+   , p_XLSX_datetime_format VARCHAR2 := 'dd/mm/yyyy hh24:mi:ss'
+   )
+      return blob;
+
 END;
 /

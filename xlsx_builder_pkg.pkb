@@ -2659,10 +2659,10 @@ IS
                    xmlns:dcmitype="http://purl.org/dc/dcmitype/"
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 	<dc:creator>'
-		|| NVL(v('APP_USER'),SYS_CONTEXT ('userenv', 'os_user'))
+		|| NVL(SYS_CONTEXT('APEX$SESSION','APP_USER'),SYS_CONTEXT ('userenv', 'os_user'))
 		|| '</dc:creator>
 	<cp:lastModifiedBy>'
-		|| NVL(v('APP_USER'),SYS_CONTEXT ('userenv', 'os_user'))
+		|| NVL(SYS_CONTEXT('APEX$SESSION','APP_USER'),SYS_CONTEXT ('userenv', 'os_user'))
 		|| '</cp:lastModifiedBy>
 	<dcterms:created xsi:type="dcterms:W3CDTF">'
 		|| TO_CHAR (sysdate, 'yyyy-mm-dd"T"hh24:mi:ss')
@@ -2825,6 +2825,179 @@ IS
          IF DBMS_SQL.is_open (t_c) THEN DBMS_SQL.close_cursor (t_c); END IF;
          if DBMS_LOB.istemporary (t_clob_sql)=1 then DBMS_LOB.freetemporary (t_clob_sql); end if;
          raise_application_error(-20001, '|+|' || sqlerrm || ',' || DBMS_UTILITY.FORMAT_ERROR_BACKTRACE || '|+|');
-   END query2sheet2;
+   end query2sheet2;
+
+   function query2sheet3
+   (
+     p_sql     in varchar2
+   , p_binds   in t_bind_tab
+   , p_headers in t_header_tab
+   , p_XLSX_date_format     VARCHAR2 := 'dd/mm/yyyy'
+   , p_XLSX_datetime_format VARCHAR2 := 'dd/mm/yyyy hh24:mi:ss'
+   )
+    return blob
+   AS
+      t_sheet       pls_integer;
+      t_c           INTEGER;
+      t_col_cnt     INTEGER;
+      t_desc_tab    DBMS_SQL.desc_tab2;
+      d_tab         DBMS_SQL.date_table;
+      n_tab         DBMS_SQL.number_table;
+      v_tab         DBMS_SQL.varchar2_table;
+      t_bulk_size   PLS_INTEGER := 200;
+      t_r           INTEGER;
+      t_cur_row     PLS_INTEGER;
+      t_cur_bind_name   varchar2(32767);
+   begin
+      t_sheet := COALESCE (null, new_sheet);
+      t_c := DBMS_SQL.open_cursor;
+      DBMS_SQL.parse (t_c, p_sql, DBMS_SQL.native);
+      DBMS_SQL.describe_columns2 (t_c, t_col_cnt, t_desc_tab);
+
+      if p_binds.count > 0 then
+         t_cur_bind_name := p_binds.first();
+         loop
+            exit when t_cur_bind_name is null;
+            dbms_sql.bind_variable( t_c, t_cur_bind_name, p_binds(t_cur_bind_name));
+            t_cur_bind_name := p_binds.next(t_cur_bind_name);
+         end loop;
+      end if;
+
+
+      FOR c IN 1 .. t_col_cnt
+      LOOP
+          cell (c,
+                1,
+                case when p_headers.exists(c) then p_headers(c) else t_desc_tab(c).col_name end,
+                p_sheet   => t_sheet);
+
+         CASE
+            WHEN t_desc_tab (c).col_type IN (2, 100, 101)
+            THEN
+               DBMS_SQL.define_array (t_c,
+                                      c,
+                                      n_tab,
+                                      t_bulk_size,
+                                      1);
+            WHEN t_desc_tab (c).col_type IN (12,
+                                             178,
+                                             179,
+                                             180,
+                                             181,
+                                             231)
+            THEN
+               DBMS_SQL.define_array (t_c,
+                                      c,
+                                      d_tab,
+                                      t_bulk_size,
+                                      1);
+            WHEN t_desc_tab (c).col_type IN (1,
+                                             8,
+                                             9,
+                                             96,
+                                             112)
+            THEN
+               DBMS_SQL.define_array (t_c,
+                                      c,
+                                      v_tab,
+                                      t_bulk_size,
+                                      1);
+            ELSE
+               NULL;
+         END CASE;
+      END LOOP;
+
+      t_cur_row := CASE WHEN true THEN 2 ELSE 1 END;
+
+      t_r := DBMS_SQL.execute (t_c);
+
+      LOOP
+         t_r := DBMS_SQL.fetch_rows (t_c);
+
+         IF t_r > 0
+         THEN
+            FOR c IN 1 .. t_col_cnt
+            LOOP
+               CASE
+                  WHEN t_desc_tab (c).col_type IN (2, 100, 101)
+                  THEN
+                     DBMS_SQL.COLUMN_VALUE (t_c, c, n_tab);
+
+                     FOR i IN 0 .. t_r - 1
+                     LOOP
+                        IF n_tab (i + n_tab.FIRST) IS NOT NULL
+                        THEN
+                           cell (c,
+                                 t_cur_row + i,
+                                 n_tab (i + n_tab.FIRST),
+                                 p_sheet   => t_sheet);
+                        END IF;
+                     END LOOP;
+
+                     n_tab.delete;
+                  WHEN t_desc_tab (c).col_type IN (12,
+                                                   178,
+                                                   179,
+                                                   180,
+                                                   181,
+                                                   231)
+                  THEN
+                     DBMS_SQL.COLUMN_VALUE (t_c, c, d_tab);
+
+                     FOR i IN 0 .. t_r - 1
+                     LOOP
+                        IF d_tab (i + d_tab.FIRST) IS NOT NULL
+                        THEN
+                           cell (c,
+                                 t_cur_row + i,
+                                 d_tab (i + d_tab.FIRST),
+                                 p_sheet   => t_sheet);
+                        END IF;
+                     END LOOP;
+
+                     d_tab.delete;
+                  WHEN t_desc_tab (c).col_type IN (1,
+                                                   8,
+                                                   9,
+                                                   96,
+                                                   112)
+                  THEN
+                     DBMS_SQL.COLUMN_VALUE (t_c, c, v_tab);
+
+                     FOR i IN 0 .. t_r - 1
+                     LOOP
+                        IF v_tab (i + v_tab.FIRST) IS NOT NULL
+                        THEN
+                           cell (c,
+                                 t_cur_row + i,
+                                 v_tab (i + v_tab.FIRST),
+                                 p_sheet   => t_sheet);
+                        END IF;
+                     END LOOP;
+
+                     v_tab.delete;
+                  ELSE
+                     NULL;
+               END CASE;
+            END LOOP;
+         END IF;
+
+         EXIT WHEN t_r != t_bulk_size;
+         t_cur_row := t_cur_row + t_r;
+      END LOOP;
+
+      DBMS_SQL.close_cursor (t_c);
+      RETURN finish;
+   EXCEPTION
+      WHEN OTHERS
+      THEN
+         IF DBMS_SQL.is_open (t_c)
+         THEN
+            DBMS_SQL.close_cursor (t_c);
+         END IF;
+
+         RETURN NULL;
+   END query2sheet3;
+
 END;
 /
