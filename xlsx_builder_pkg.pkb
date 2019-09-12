@@ -1195,7 +1195,7 @@ IS
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
 <Application>Microsoft Excel</Application>
 <DocSecurity>0</DocSecurity>
-<ScaleCrop>FALSE</ScaleCrop>
+<ScaleCrop>false</ScaleCrop>
 <HeadingPairs>
 <vt:vector size="2" baseType="variant">
 <vt:variant>
@@ -1226,9 +1226,9 @@ IS
          p_vc_buffer   => t_tmp,
          p_vc_addition => '</vt:vector>
 </TitlesOfParts>
-<LinksUpToDate>FALSE</LinksUpToDate>
-<SharedDoc>FALSE</SharedDoc>
-<HyperlinksChanged>FALSE</HyperlinksChanged>
+<LinksUpToDate>false</LinksUpToDate>
+<SharedDoc>false</SharedDoc>
+<HyperlinksChanged>false</HyperlinksChanged>
 <AppVersion>14.0300</AppVersion>
 </Properties>',
          p_eof         => TRUE);
@@ -1437,7 +1437,7 @@ IS
          p_vc_addition => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <fileVersion appName="xl" lastEdited="5" lowestEdited="5" rupBuild="9302"/>
-<workbookPr date1904="FALSE" defaultThemeVersion="124226"/>
+<workbookPr date1904="false" defaultThemeVersion="124226"/>
 <bookViews>
 <workbookView xWindow="120" yWindow="45" windowWidth="19155" windowHeight="4935"/>
 </bookViews>
@@ -2332,7 +2332,7 @@ IS
                clob_vc_concat(
                   p_clob        => t_xxx,
                   p_vc_buffer   => t_tmp,
-                  p_vc_addition => '<x:AutoFill>FALSE</x:AutoFill><x:Row>'
+                  p_vc_addition => '<x:AutoFill>false</x:AutoFill><x:Row>'
                                 || TO_CHAR (workbook.sheets_tab (s).comments_tab (c).pi_row_nr - 1)
                                 || '</x:Row><x:Column>'
                                 || TO_CHAR (workbook.sheets_tab (s).comments_tab (c).pi_column_nr - 1)
