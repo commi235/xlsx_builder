@@ -126,7 +126,7 @@ IS
    (
       sheet_rows_tab    t_rows_tab,
       widths_tab_tab    t_widths_tab,
-      vc_sheet_name     VARCHAR2 (100),
+      vc_sheet_name     VARCHAR2 (31 CHAR),
       pi_freeze_rows    PLS_INTEGER,
       pi_freeze_cols    PLS_INTEGER,
       autofilters_tab   t_autofilters_tab,
@@ -383,7 +383,11 @@ IS
       t_ind   PLS_INTEGER;
    BEGIN
       workbook.sheets_tab (t_nr).vc_sheet_name :=
-         NVL (DBMS_XMLGEN.CONVERT (TRANSLATE (p_sheetname, 'a/\[]*:?', 'a')), 'Sheet' || TO_CHAR (t_nr));
+         -- PHARTENFELLER(2019/09/18): Cut sheetname when too long (max 31 chars)
+         COALESCE (
+            SUBSTR( DBMS_XMLGEN.CONVERT (TRANSLATE (p_sheetname, 'a/\[]*:?', 'a')), 1, 31 )
+         , 'Sheet' || TO_CHAR (t_nr)
+         );
 
       IF workbook.strings_tab.COUNT = 0
       THEN
