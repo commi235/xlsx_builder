@@ -135,7 +135,8 @@ IS
       row_fmts_tab      t_row_fmts_tab,
       comments_tab      t_comments_tab,
       mergecells_tab    t_mergecells_tab,
-      validations_tab   t_validations_tab
+      validations_tab   t_validations_tab,
+      hidden            boolean
    );
 
    TYPE t_sheets_tab IS TABLE OF t_sheet_rec
@@ -376,7 +377,7 @@ IS
    END;
 
    --
-   FUNCTION new_sheet (p_sheetname VARCHAR2 := NULL)
+   FUNCTION new_sheet (p_sheetname VARCHAR2 := NULL, p_hidden BOOLEAN := FALSE)
       RETURN PLS_INTEGER
    AS
       t_nr    PLS_INTEGER := workbook.sheets_tab.COUNT + 1;
@@ -388,6 +389,8 @@ IS
             SUBSTR( DBMS_XMLGEN.CONVERT (TRANSLATE (p_sheetname, 'a/\[]*:?', 'a')), 1, 31 )
          , 'Sheet' || TO_CHAR (t_nr)
          );
+
+      workbook.sheets_tab (t_nr).hidden := p_hidden;
 
       IF workbook.strings_tab.COUNT = 0
       THEN
@@ -1449,16 +1452,31 @@ IS
 
       FOR s IN 1 .. workbook.sheets_tab.COUNT
       LOOP
-         clob_vc_concat(
-            p_clob        => t_xxx,
-            p_vc_buffer   => t_tmp,
-            p_vc_addition => '<sheet name="'
-                          || workbook.sheets_tab (s).vc_sheet_name
-                          || '" sheetId="'
-                          || TO_CHAR (s)
-                          || '" r:id="rId'
-                          || TO_CHAR (9 + s)
-                          || '"/>');
+         -- PHARTENFELLER(2019/09/23) added option to hide sheet
+         IF NOT workbook.sheets_tab (s).hidden then
+            clob_vc_concat(
+               p_clob        => t_xxx,
+               p_vc_buffer   => t_tmp,
+               p_vc_addition => '<sheet name="'
+                           || workbook.sheets_tab (s).vc_sheet_name
+                           || '" sheetId="'
+                           || TO_CHAR (s)
+                           || '" r:id="rId'
+                           || TO_CHAR (9 + s)
+                           || '"/>');
+         ELSE
+            clob_vc_concat(
+               p_clob        => t_xxx,
+               p_vc_buffer   => t_tmp,
+               p_vc_addition => '<sheet name="'
+                           || workbook.sheets_tab (s).vc_sheet_name
+                           || '" sheetId="'
+                           || TO_CHAR (s)
+                           || '" state="hidden" '
+                           || 'r:id="rId'
+                           || TO_CHAR (9 + s)
+                           || '"/>');
+         END IF;
       END LOOP;
 
       clob_vc_concat(

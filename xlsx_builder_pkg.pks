@@ -108,7 +108,7 @@ IS
    * @param p_sheetname Name Excel should display for the new worksheet.
    * @return ID of newly created worksheet.
    */
-   FUNCTION new_sheet (p_sheetname VARCHAR2 := NULL)
+   FUNCTION new_sheet (p_sheetname VARCHAR2 := NULL, p_hidden BOOLEAN := FALSE)
       RETURN PLS_INTEGER;
 
    /**
