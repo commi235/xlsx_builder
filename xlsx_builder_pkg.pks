@@ -54,6 +54,8 @@ IS
    **     For dates used following logic:
    **       - if trunc([column])=[column], then outputed cell value is formatted to format YYYYMMDD;
    **       - otherwise, outputted cell value is formatted to format YYYYMMDDTHH24MISS;
+   **   Date: 24-09-2019 (PH)
+   **     Added parameter "p_hidden" to function "new_sheet" to create a hidden sheet 
    ******************************************************************************
    ******************************************************************************
    Copyright (C) 2011, 2012 by Anton Scheffer
