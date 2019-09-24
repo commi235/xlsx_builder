@@ -935,6 +935,7 @@ IS
                               p_sheet          PLS_INTEGER := NULL,
                               p_sheet_datasource PLS_INTEGER := NULL)
    AS
+      c_single_quote constant varchar2(1) := '''';
    BEGIN
       -- PHARTENFELLER(2019/09/24): Allow listvalidations with data from a different sheet
       IF p_sheet_datasource IS NULL THEN
@@ -961,7 +962,9 @@ IS
             'list',
             alfan_col (p_sqref_col) || TO_CHAR (p_sqref_row),
             p_style         => LOWER (p_style),
-            p_formula1      =>   workbook.sheets_tab(p_sheet_datasource).vc_sheet_name
+            p_formula1      =>   c_single_quote
+                              || workbook.sheets_tab(p_sheet_datasource).vc_sheet_name
+                              || c_single_quote
                               || '!$'
                               || alfan_col (p_tl_col)
                               || '$'
