@@ -932,27 +932,51 @@ IS
                               p_show_error     BOOLEAN := FALSE,
                               p_error_title    VARCHAR2 := NULL,
                               p_error_txt      VARCHAR2 := NULL,
-                              p_sheet          PLS_INTEGER := NULL)
+                              p_sheet          PLS_INTEGER := NULL,
+                              p_sheet_datasource PLS_INTEGER := NULL)
    AS
    BEGIN
-      add_validation (
-         'list',
-         alfan_col (p_sqref_col) || TO_CHAR (p_sqref_row),
-         p_style         => LOWER (p_style),
-         p_formula1      =>    '$'
-                            || alfan_col (p_tl_col)
-                            || '$'
-                            || TO_CHAR (p_tl_row)
-                            || ':$'
-                            || alfan_col (p_br_col)
-                            || '$'
-                            || TO_CHAR (p_br_row),
-         p_title         => p_title,
-         p_prompt        => p_prompt,
-         p_show_error    => p_show_error,
-         p_error_title   => p_error_title,
-         p_error_txt     => p_error_txt,
-         p_sheet         => p_sheet);
+      -- PHARTENFELLER(2019/09/24): Allow listvalidations with data from a different sheet
+      IF p_sheet_datasource IS NULL THEN
+         add_validation (
+            'list',
+            alfan_col (p_sqref_col) || TO_CHAR (p_sqref_row),
+            p_style         => LOWER (p_style),
+            p_formula1      =>    '$'
+                              || alfan_col (p_tl_col)
+                              || '$'
+                              || TO_CHAR (p_tl_row)
+                              || ':$'
+                              || alfan_col (p_br_col)
+                              || '$'
+                              || TO_CHAR (p_br_row),
+            p_title         => p_title,
+            p_prompt        => p_prompt,
+            p_show_error    => p_show_error,
+            p_error_title   => p_error_title,
+            p_error_txt     => p_error_txt,
+            p_sheet         => p_sheet);
+      ELSE
+         add_validation (
+            'list',
+            alfan_col (p_sqref_col) || TO_CHAR (p_sqref_row),
+            p_style         => LOWER (p_style),
+            p_formula1      =>   workbook.sheets_tab(p_sheet_datasource).vc_sheet_name
+                              || '!$'
+                              || alfan_col (p_tl_col)
+                              || '$'
+                              || TO_CHAR (p_tl_row)
+                              || ':$'
+                              || alfan_col (p_br_col)
+                              || '$'
+                              || TO_CHAR (p_br_row),
+            p_title         => p_title,
+            p_prompt        => p_prompt,
+            p_show_error    => p_show_error,
+            p_error_title   => p_error_title,
+            p_error_txt     => p_error_txt,
+            p_sheet         => p_sheet);
+      END IF;
    END list_validation;
 
    PROCEDURE list_validation (p_sqref_col       PLS_INTEGER,
