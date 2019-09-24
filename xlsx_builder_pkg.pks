@@ -55,7 +55,8 @@ IS
    **       - if trunc([column])=[column], then outputed cell value is formatted to format YYYYMMDD;
    **       - otherwise, outputted cell value is formatted to format YYYYMMDDTHH24MISS;
    **   Date: 24-09-2019 (PH)
-   **     Added parameter "p_hidden" to function "new_sheet" to create a hidden sheet 
+   **     Added optional parameter "p_hidden" to function "new_sheet" to create a hidden sheet
+   **     Added optional parameter "p_sheet_datasource" to procedure "list_validation" to allow dropdowns with data from a different sheet
    ******************************************************************************
    ******************************************************************************
    Copyright (C) 2011, 2012 by Anton Scheffer
@@ -289,22 +290,23 @@ IS
                          p_br_row    PLS_INTEGER,
                          p_sheet     PLS_INTEGER := NULL);
 
-   PROCEDURE list_validation (p_sqref_col      PLS_INTEGER,
-                              p_sqref_row      PLS_INTEGER,
-                              p_tl_col         PLS_INTEGER                                                                       -- top left
-                                                          ,
-                              p_tl_row         PLS_INTEGER,
-                              p_br_col         PLS_INTEGER                                                                   -- bottom right
-                                                          ,
-                              p_br_row         PLS_INTEGER,
-                              p_style          VARCHAR2 := 'stop'                                              -- stop, warning, information
-                                                                 ,
-                              p_title          VARCHAR2 := NULL,
-                              p_prompt         VARCHAR2 := NULL,
-                              p_show_error     BOOLEAN := FALSE,
-                              p_error_title    VARCHAR2 := NULL,
-                              p_error_txt      VARCHAR2 := NULL,
-                              p_sheet          PLS_INTEGER := NULL);
+   PROCEDURE list_validation (p_sqref_col        PLS_INTEGER,
+                              p_sqref_row        PLS_INTEGER,
+                              p_tl_col           PLS_INTEGER                                                                       -- top left
+                                                            ,
+                              p_tl_row           PLS_INTEGER,
+                              p_br_col           PLS_INTEGER                                                                   -- bottom right
+                                                            ,
+                              p_br_row           PLS_INTEGER,
+                              p_style            VARCHAR2 := 'stop'                                              -- stop, warning, information
+                                                                   ,
+                              p_title            VARCHAR2 := NULL,
+                              p_prompt           VARCHAR2 := NULL,
+                              p_show_error       BOOLEAN := FALSE,
+                              p_error_title      VARCHAR2 := NULL,
+                              p_error_txt        VARCHAR2 := NULL,
+                              p_sheet            PLS_INTEGER := NULL,
+                              p_sheet_datasource PLS_INTEGER := NULL);
 
    PROCEDURE list_validation (p_sqref_col       PLS_INTEGER,
                               p_sqref_row       PLS_INTEGER,
