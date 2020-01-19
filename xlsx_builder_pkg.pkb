@@ -126,7 +126,7 @@ IS
    (
       sheet_rows_tab    t_rows_tab,
       widths_tab_tab    t_widths_tab,
-      vc_sheet_name     VARCHAR2 (100),
+      vc_sheet_name     VARCHAR2 (31 CHAR),
       pi_freeze_rows    PLS_INTEGER,
       pi_freeze_cols    PLS_INTEGER,
       autofilters_tab   t_autofilters_tab,
@@ -135,7 +135,8 @@ IS
       row_fmts_tab      t_row_fmts_tab,
       comments_tab      t_comments_tab,
       mergecells_tab    t_mergecells_tab,
-      validations_tab   t_validations_tab
+      validations_tab   t_validations_tab,
+      hidden            boolean
    );
 
    TYPE t_sheets_tab IS TABLE OF t_sheet_rec
@@ -376,14 +377,20 @@ IS
    END;
 
    --
-   FUNCTION new_sheet (p_sheetname VARCHAR2 := NULL)
+   FUNCTION new_sheet (p_sheetname VARCHAR2 := NULL, p_hidden BOOLEAN := FALSE)
       RETURN PLS_INTEGER
    AS
       t_nr    PLS_INTEGER := workbook.sheets_tab.COUNT + 1;
       t_ind   PLS_INTEGER;
    BEGIN
       workbook.sheets_tab (t_nr).vc_sheet_name :=
-         NVL (DBMS_XMLGEN.CONVERT (TRANSLATE (p_sheetname, 'a/\[]*:?', 'a')), 'Sheet' || TO_CHAR (t_nr));
+         -- PHARTENFELLER(2019/09/18): Cut sheetname when too long (max 31 chars)
+         COALESCE (
+            SUBSTR( DBMS_XMLGEN.CONVERT (TRANSLATE (p_sheetname, 'a/\[]*:?', 'a')), 1, 31 )
+         , 'Sheet' || TO_CHAR (t_nr)
+         );
+
+      workbook.sheets_tab (t_nr).hidden := p_hidden;
 
       IF workbook.strings_tab.COUNT = 0
       THEN
@@ -925,27 +932,54 @@ IS
                               p_show_error     BOOLEAN := FALSE,
                               p_error_title    VARCHAR2 := NULL,
                               p_error_txt      VARCHAR2 := NULL,
-                              p_sheet          PLS_INTEGER := NULL)
+                              p_sheet          PLS_INTEGER := NULL,
+                              p_sheet_datasource PLS_INTEGER := NULL)
    AS
+      c_single_quote constant varchar2(1) := '''';
    BEGIN
-      add_validation (
-         'list',
-         alfan_col (p_sqref_col) || TO_CHAR (p_sqref_row),
-         p_style         => LOWER (p_style),
-         p_formula1      =>    '$'
-                            || alfan_col (p_tl_col)
-                            || '$'
-                            || TO_CHAR (p_tl_row)
-                            || ':$'
-                            || alfan_col (p_br_col)
-                            || '$'
-                            || TO_CHAR (p_br_row),
-         p_title         => p_title,
-         p_prompt        => p_prompt,
-         p_show_error    => p_show_error,
-         p_error_title   => p_error_title,
-         p_error_txt     => p_error_txt,
-         p_sheet         => p_sheet);
+      -- PHARTENFELLER(2019/09/24): Allow listvalidations with data from a different sheet
+      IF p_sheet_datasource IS NULL THEN
+         add_validation (
+            'list',
+            alfan_col (p_sqref_col) || TO_CHAR (p_sqref_row),
+            p_style         => LOWER (p_style),
+            p_formula1      =>    '$'
+                              || alfan_col (p_tl_col)
+                              || '$'
+                              || TO_CHAR (p_tl_row)
+                              || ':$'
+                              || alfan_col (p_br_col)
+                              || '$'
+                              || TO_CHAR (p_br_row),
+            p_title         => p_title,
+            p_prompt        => p_prompt,
+            p_show_error    => p_show_error,
+            p_error_title   => p_error_title,
+            p_error_txt     => p_error_txt,
+            p_sheet         => p_sheet);
+      ELSE
+         add_validation (
+            'list',
+            alfan_col (p_sqref_col) || TO_CHAR (p_sqref_row),
+            p_style         => LOWER (p_style),
+            p_formula1      =>   c_single_quote
+                              || workbook.sheets_tab(p_sheet_datasource).vc_sheet_name
+                              || c_single_quote
+                              || '!$'
+                              || alfan_col (p_tl_col)
+                              || '$'
+                              || TO_CHAR (p_tl_row)
+                              || ':$'
+                              || alfan_col (p_br_col)
+                              || '$'
+                              || TO_CHAR (p_br_row),
+            p_title         => p_title,
+            p_prompt        => p_prompt,
+            p_show_error    => p_show_error,
+            p_error_title   => p_error_title,
+            p_error_txt     => p_error_txt,
+            p_sheet         => p_sheet);
+      END IF;
    END list_validation;
 
    PROCEDURE list_validation (p_sqref_col       PLS_INTEGER,
@@ -1195,7 +1229,7 @@ IS
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
 <Application>Microsoft Excel</Application>
 <DocSecurity>0</DocSecurity>
-<ScaleCrop>FALSE</ScaleCrop>
+<ScaleCrop>false</ScaleCrop>
 <HeadingPairs>
 <vt:vector size="2" baseType="variant">
 <vt:variant>
@@ -1226,9 +1260,9 @@ IS
          p_vc_buffer   => t_tmp,
          p_vc_addition => '</vt:vector>
 </TitlesOfParts>
-<LinksUpToDate>FALSE</LinksUpToDate>
-<SharedDoc>FALSE</SharedDoc>
-<HyperlinksChanged>FALSE</HyperlinksChanged>
+<LinksUpToDate>false</LinksUpToDate>
+<SharedDoc>false</SharedDoc>
+<HyperlinksChanged>false</HyperlinksChanged>
 <AppVersion>14.0300</AppVersion>
 </Properties>',
          p_eof         => TRUE);
@@ -1437,7 +1471,7 @@ IS
          p_vc_addition => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <fileVersion appName="xl" lastEdited="5" lowestEdited="5" rupBuild="9302"/>
-<workbookPr date1904="FALSE" defaultThemeVersion="124226"/>
+<workbookPr date1904="false" defaultThemeVersion="124226"/>
 <bookViews>
 <workbookView xWindow="120" yWindow="45" windowWidth="19155" windowHeight="4935"/>
 </bookViews>
@@ -1445,16 +1479,31 @@ IS
 
       FOR s IN 1 .. workbook.sheets_tab.COUNT
       LOOP
-         clob_vc_concat(
-            p_clob        => t_xxx,
-            p_vc_buffer   => t_tmp,
-            p_vc_addition => '<sheet name="'
-                          || workbook.sheets_tab (s).vc_sheet_name
-                          || '" sheetId="'
-                          || TO_CHAR (s)
-                          || '" r:id="rId'
-                          || TO_CHAR (9 + s)
-                          || '"/>');
+         -- PHARTENFELLER(2019/09/23) added option to hide sheet
+         IF NOT workbook.sheets_tab (s).hidden then
+            clob_vc_concat(
+               p_clob        => t_xxx,
+               p_vc_buffer   => t_tmp,
+               p_vc_addition => '<sheet name="'
+                           || workbook.sheets_tab (s).vc_sheet_name
+                           || '" sheetId="'
+                           || TO_CHAR (s)
+                           || '" r:id="rId'
+                           || TO_CHAR (9 + s)
+                           || '"/>');
+         ELSE
+            clob_vc_concat(
+               p_clob        => t_xxx,
+               p_vc_buffer   => t_tmp,
+               p_vc_addition => '<sheet name="'
+                           || workbook.sheets_tab (s).vc_sheet_name
+                           || '" sheetId="'
+                           || TO_CHAR (s)
+                           || '" state="hidden" '
+                           || 'r:id="rId'
+                           || TO_CHAR (9 + s)
+                           || '"/>');
+         END IF;
       END LOOP;
 
       clob_vc_concat(
@@ -2332,7 +2381,7 @@ IS
                clob_vc_concat(
                   p_clob        => t_xxx,
                   p_vc_buffer   => t_tmp,
-                  p_vc_addition => '<x:AutoFill>FALSE</x:AutoFill><x:Row>'
+                  p_vc_addition => '<x:AutoFill>false</x:AutoFill><x:Row>'
                                 || TO_CHAR (workbook.sheets_tab (s).comments_tab (c).pi_row_nr - 1)
                                 || '</x:Row><x:Column>'
                                 || TO_CHAR (workbook.sheets_tab (s).comments_tab (c).pi_column_nr - 1)
