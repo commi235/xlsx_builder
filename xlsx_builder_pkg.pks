@@ -290,6 +290,19 @@ IS
                          p_br_row    PLS_INTEGER,
                          p_sheet     PLS_INTEGER := NULL);
 
+   PROCEDURE add_validation (p_type           VARCHAR2,
+                             p_sqref          VARCHAR2,
+                             p_style          VARCHAR2 := 'stop'                                               -- stop, warning, information
+                                                                ,
+                             p_formula1       VARCHAR2 := NULL,
+                             p_formula2       VARCHAR2 := NULL,
+                             p_title          VARCHAR2 := NULL,
+                             p_prompt         VARCHAR2 := NULL,
+                             p_show_error     BOOLEAN := FALSE,
+                             p_error_title    VARCHAR2 := NULL,
+                             p_error_txt      VARCHAR2 := NULL,
+                             p_sheet          PLS_INTEGER := NULL) ;
+
    PROCEDURE list_validation (p_sqref_col        PLS_INTEGER,
                               p_sqref_row        PLS_INTEGER,
                               p_tl_col           PLS_INTEGER                                                                       -- top left
