@@ -910,6 +910,7 @@ IS
       workbook.sheets_tab (t_sheet).validations_tab (t_ind).vc_errorstyle := p_style;
       workbook.sheets_tab (t_sheet).validations_tab (t_ind).vc_sqref := p_sqref;
       workbook.sheets_tab (t_sheet).validations_tab (t_ind).vc_formula1 := p_formula1;
+      workbook.sheets_tab (t_sheet).validations_tab (t_ind).vc_formula2 := p_formula2;
       workbook.sheets_tab (t_sheet).validations_tab (t_ind).vc_error_title := p_error_title;
       workbook.sheets_tab (t_sheet).validations_tab (t_ind).vc_error_txt := p_error_txt;
       workbook.sheets_tab (t_sheet).validations_tab (t_ind).vc_title := p_title;
