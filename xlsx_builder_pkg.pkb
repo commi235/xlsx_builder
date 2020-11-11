@@ -51,7 +51,8 @@ IS
    TYPE t_cell_rec IS RECORD
    (
       nn_value_id    NUMBER,
-      vc_style_def   VARCHAR2 (50)
+      vc_style_def   VARCHAR2 (50),
+      formula        VARCHAR2 (32767 CHAR) := NULL   
    );
 
    TYPE t_cells_tab IS TABLE OF t_cell_rec
@@ -764,7 +765,8 @@ IS
                    p_fillid       PLS_INTEGER := NULL,
                    p_borderid     PLS_INTEGER := NULL,
                    p_alignment    t_alignment_rec := NULL,
-                   p_sheet        PLS_INTEGER := NULL)
+                   p_sheet        PLS_INTEGER := NULL,
+                   p_formula      VARCHAR2 := NULL)
    AS
       t_sheet       PLS_INTEGER;
       t_alignment   t_alignment_rec := p_alignment;
@@ -772,6 +774,12 @@ IS
       t_sheet := get_sheet_id (p_sheet);
       workbook.sheets_tab (t_sheet).sheet_rows_tab (p_row) (p_col).nn_value_id := add_string (p_value);
 
+      --THERWIX(2020/07/06): Allow to add Formulas into a cell
+      IF p_formula IS NOT NULL 
+      THEN
+         workbook.sheets_tab (t_sheet).sheet_rows_tab (p_row) (p_col).formula :=  (p_formula);
+      END IF;  											
+											
       IF t_alignment.bo_wraptext IS NULL AND INSTR (p_value, CHR (13)) > 0
       THEN
          t_alignment.bo_wraptext := TRUE;
@@ -1973,7 +1981,11 @@ IS
                                 || '"'
                                 || ' '
                                 || workbook.sheets_tab (s).sheet_rows_tab (t_row_ind) (t_col_ind).vc_style_def
-                                || '><v>'
+                                || '>		       		                                
+                                || CASE WHEN workbook.sheets_tab (s).sheet_rows_tab (t_row_ind) (t_col_ind).formula IS NOT NULL THEN '<f>'
+                                || TO_CHAR (workbook.sheets_tab (s).sheet_rows_tab (t_row_ind) (t_col_ind).formula)
+                                || '</f>' END
+		       		|| <v>'
                                 || TO_CHAR (workbook.sheets_tab (s).sheet_rows_tab (t_row_ind) (t_col_ind).nn_value_id,
                                             'TM9',
                                             'NLS_NUMERIC_CHARACTERS=.,')
