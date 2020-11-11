@@ -233,6 +233,7 @@ IS
    * @param p_borderId  ID of border definition
    * @param p_alignment The wanted alignment
    * @param p_sheet     Worksheet the cell is located, if omitted last worksheet is used
+   * @param p_formula   The formula you put into the cell
    */
    PROCEDURE cell (p_col          PLS_INTEGER,
                    p_row          PLS_INTEGER,
@@ -242,7 +243,8 @@ IS
                    p_fillid       PLS_INTEGER := NULL,
                    p_borderid     PLS_INTEGER := NULL,
                    p_alignment    t_alignment_rec := NULL,
-                   p_sheet        PLS_INTEGER := NULL);
+                   p_sheet        PLS_INTEGER := NULL,
+                   p_formula      VARCHAR2 := NULL);
 
    /**
    * Puts a date value into a cell of the spreadsheet.
