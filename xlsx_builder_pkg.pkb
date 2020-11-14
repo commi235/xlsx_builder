@@ -1987,7 +1987,7 @@ IS
                                       || TO_CHAR (workbook.sheets_tab (s).sheet_rows_tab (t_row_ind) (t_col_ind).formula)
                                       || '</f>' 
                                    END
-		       		                  || '<v>'
+		       		              || '<v>'
                                 || TO_CHAR (workbook.sheets_tab (s).sheet_rows_tab (t_row_ind) (t_col_ind).nn_value_id,
                                             'TM9',
                                             'NLS_NUMERIC_CHARACTERS=.,')
