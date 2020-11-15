@@ -1981,11 +1981,13 @@ IS
                                 || '"'
                                 || ' '
                                 || workbook.sheets_tab (s).sheet_rows_tab (t_row_ind) (t_col_ind).vc_style_def
-                                || '>		       		                                
-                                || CASE WHEN workbook.sheets_tab (s).sheet_rows_tab (t_row_ind) (t_col_ind).formula IS NOT NULL THEN '<f>'
-                                || TO_CHAR (workbook.sheets_tab (s).sheet_rows_tab (t_row_ind) (t_col_ind).formula)
-                                || '</f>' END
-		       		|| <v>'
+                                || '>'
+                                || CASE WHEN workbook.sheets_tab (s).sheet_rows_tab (t_row_ind) (t_col_ind).formula IS NOT NULL 
+                                    THEN '<f>'
+                                      || TO_CHAR (workbook.sheets_tab (s).sheet_rows_tab (t_row_ind) (t_col_ind).formula)
+                                      || '</f>' 
+                                   END
+		       		              || '<v>'
                                 || TO_CHAR (workbook.sheets_tab (s).sheet_rows_tab (t_row_ind) (t_col_ind).nn_value_id,
                                             'TM9',
                                             'NLS_NUMERIC_CHARACTERS=.,')
